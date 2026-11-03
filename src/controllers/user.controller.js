@@ -1,0 +1,2 @@
+// OWNER: Hiếu
+module.exports = {};
