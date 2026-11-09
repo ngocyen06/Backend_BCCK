@@ -1,1 +1,973 @@
 # OWNER: Hiếu
+# Hợp đồng API cho backend BCCK (OpenAPI 3.0.3).
+# Chỉ mô tả hợp đồng, không chứa logic nghiệp vụ (CONTRACT.md:16).
+# Định dạng response và lỗi bám CONTRACT.md:24-27.
+# Mọi route đều nằm sau authenticate (CONTRACT.md:41) nên security khai báo ở cấp gốc.
+
+openapi: 3.0.3
+
+info:
+  title: Backend BCCK API
+  version: 1.0.0
+  description: |
+    Tài liệu API backend BCCK.
+
+    - Xác thực: header `Authorization: Bearer <token>`, payload `{ id, role }`,
+      hết hạn theo `JWT_EXPIRES_IN` (mặc định 2h).
+    - Response một đối tượng: trả thẳng object. Tạo mới: `201`. Còn lại: `200`.
+      Xoá thành công: `204` không body.
+    - Response danh sách: `{ items, page, pageSize, total }`.
+    - Lỗi: `{ code, message }`. Lỗi validate thêm `details: [{ path, message }]`
+      với `code = VALIDATION_ERROR`. Lỗi 500 chỉ trả `{ code: INTERNAL, message: "Lỗi hệ thống" }`.
+    - Thời gian luôn là UTC, ISO 8601.
+
+servers:
+  - url: http://localhost:3000
+    description: Máy local
+  - url: /
+    description: Cùng origin
+
+tags:
+  - name: Users
+    description: Quản lý người dùng (chỉ Admin)
+  - name: Subjects
+    description: Môn học (đọc cho mọi role, ghi cho Admin)
+  - name: Statistics
+    description: Thống kê (Admin và Teacher)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /users:
+    get:
+      tags: [Users]
+      summary: Danh sách người dùng
+      description: Chỉ Admin. Hỗ trợ lọc theo role, trạng thái và từ khoá.
+      operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: role
+          in: query
+          required: false
+          description: Lọc theo vai trò
+          schema:
+            $ref: '#/components/schemas/Role'
+        - name: isActive
+          in: query
+          required: false
+          description: Lọc theo trạng thái hoạt động
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - name: keyword
+          in: query
+          required: false
+          description: Tìm gần đúng trong Username và FullName
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: Danh sách người dùng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+    post:
+      tags: [Users]
+      summary: Tạo người dùng
+      description: |
+        Chỉ Admin. Khác register công khai, Admin được phép chỉ định `role`
+        (CONTRACT.md:43). Mật khẩu được băm bằng bcrypt, không bao giờ trả về.
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Username hoặc email đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                usernameExists:
+                  value:
+                    code: USERNAME_EXISTS
+                    message: Username đã tồn tại
+                emailExists:
+                  value:
+                    code: EMAIL_EXISTS
+                    message: Email đã tồn tại
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Users]
+      summary: Chi tiết người dùng
+      description: Chỉ Admin.
+      operationId: getUserById
+      responses:
+        '200':
+          description: Thông tin người dùng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+    patch:
+      tags: [Users]
+      summary: Cập nhật họ tên / email
+      description: Chỉ Admin. Cần ít nhất một trường trong body.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Người dùng sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+    delete:
+      tags: [Users]
+      summary: Vô hiệu hoá người dùng
+      description: |
+        Chỉ Admin. Repository đặt `IsActive = 0` (xoá mềm), không xoá bản ghi.
+        Thành công trả `204` không body (CONTRACT.md:24).
+      operationId: deleteUser
+      responses:
+        '204':
+          description: Đã vô hiệu hoá
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /users/{id}/role:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags: [Users]
+      summary: Đổi vai trò người dùng
+      description: Chỉ Admin.
+      operationId: updateUserRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRoleRequest'
+      responses:
+        '200':
+          description: Người dùng sau khi đổi vai trò
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /users/{id}/status:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags: [Users]
+      summary: Khoá / mở khoá người dùng
+      description: Chỉ Admin.
+      operationId: updateUserStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusRequest'
+      responses:
+        '200':
+          description: Người dùng sau khi đổi trạng thái
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UserNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /subjects:
+    get:
+      tags: [Subjects]
+      summary: Danh sách môn học
+      description: Mọi role đã đăng nhập đều xem được danh mục môn học.
+      operationId: listSubjects
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: keyword
+          in: query
+          required: false
+          description: Tìm gần đúng theo mã hoặc tên môn
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: Danh sách môn học
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/Internal'
+    post:
+      tags: [Subjects]
+      summary: Tạo môn học
+      description: Chỉ Admin. Mã và tên môn phải không trùng.
+      operationId: createSubject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubjectRequest'
+      responses:
+        '201':
+          description: Tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Mã hoặc tên môn đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                codeExists:
+                  value:
+                    code: SUBJECT_CODE_EXISTS
+                    message: Mã môn đã tồn tại
+                nameExists:
+                  value:
+                    code: SUBJECT_NAME_EXISTS
+                    message: Tên môn đã tồn tại
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /subjects/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdPath'
+    get:
+      tags: [Subjects]
+      summary: Chi tiết môn học
+      description: Mọi role đã đăng nhập.
+      operationId: getSubjectById
+      responses:
+        '200':
+          description: Thông tin môn học
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+    patch:
+      tags: [Subjects]
+      summary: Cập nhật môn học
+      description: Chỉ Admin. Cần ít nhất một trường trong body.
+      operationId: updateSubject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubjectRequest'
+      responses:
+        '200':
+          description: Môn học sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '409':
+          description: Mã hoặc tên môn đã tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                codeExists:
+                  value:
+                    code: SUBJECT_CODE_EXISTS
+                    message: Mã môn đã tồn tại
+                nameExists:
+                  value:
+                    code: SUBJECT_NAME_EXISTS
+                    message: Tên môn đã tồn tại
+        '500':
+          $ref: '#/components/responses/Internal'
+    delete:
+      tags: [Subjects]
+      summary: Xoá môn học
+      description: |
+        Chỉ Admin. Không xoá được môn đang được câu hỏi hoặc bộ đề sử dụng.
+        Thành công trả `204` không body.
+      operationId: deleteSubject
+      responses:
+        '204':
+          description: Đã xoá
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '409':
+          description: Môn học đang được sử dụng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: SUBJECT_IN_USE
+                message: Môn học đang được câu hỏi hoặc bộ đề sử dụng, không thể xoá
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /statistics/subjects/{subjectId}:
+    get:
+      tags: [Statistics]
+      summary: Thống kê theo môn học
+      description: |
+        Admin và Teacher. Gọi stored procedure `sp_GetSubjectStatistics`
+        (database/04_sp_GetSubjectStatistics.sql): mỗi phần tử của `items` là một
+        bộ đề của môn kèm số liệu lượt làm. Môn chưa có bộ đề vẫn trả một dòng
+        với `ExamSetId = null`.
+
+        Lưu ý: các cột trong `items` giữ nguyên PascalCase vì repository trả thẳng
+        recordset của SP (src/repositories/statistics.repository.js:12-19).
+      operationId: getSubjectStatistics
+      parameters:
+        - name: subjectId
+          in: path
+          required: true
+          description: Id môn học
+          schema:
+            type: integer
+            minimum: 1
+        - name: from
+          in: query
+          required: false
+          description: Mốc thời gian bắt đầu (ISO 8601 có offset). Hiện được validate nhưng chưa dùng trong truy vấn.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Mốc thời gian kết thúc (ISO 8601 có offset). Hiện được validate nhưng chưa dùng trong truy vấn.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Thống kê theo môn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubjectStatistics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/SubjectNotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /exam-sets/{id}/statistics:
+    get:
+      tags: [Statistics]
+      summary: Thống kê theo bộ đề
+      description: |
+        Admin và Teacher. Đếm lượt làm theo trạng thái và thống kê điểm của các
+        lượt đã nộp (Submitted). Điểm null khi chưa có lượt nào được nộp.
+      operationId: getExamSetStatistics
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id bộ đề
+          schema:
+            type: integer
+            minimum: 1
+        - name: from
+          in: query
+          required: false
+          description: Mốc thời gian bắt đầu (ISO 8601 có offset). Hiện được validate nhưng chưa dùng trong truy vấn.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Mốc thời gian kết thúc (ISO 8601 có offset). Hiện được validate nhưng chưa dùng trong truy vấn.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Thống kê theo bộ đề
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExamSetStatistics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Không tìm thấy bộ đề
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: EXAM_SET_NOT_FOUND
+                message: Không tìm thấy bộ đề
+        '500':
+          $ref: '#/components/responses/Internal'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Payload { id, role }, hết hạn theo JWT_EXPIRES_IN (mặc định 2h).
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      description: Trang hiện tại, bắt đầu từ 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      description: Số phần tử mỗi trang, tối đa 100
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Id bản ghi
+      schema:
+        type: integer
+        minimum: 1
+
+  schemas:
+    Role:
+      type: string
+      enum: [Admin, Teacher, Student]
+      description: Vai trò người dùng (CONTRACT.md:31)
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: NOT_FOUND
+        message:
+          type: string
+          example: Không tìm thấy dữ liệu
+
+    ValidationErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ErrorResponse'
+        - type: object
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  path:
+                    type: string
+                    example: body.code
+                  message:
+                    type: string
+                    example: Mã môn phải có ít nhất 2 ký tự
+
+    Pagination:
+      type: object
+      required: [page, pageSize, total]
+      properties:
+        page:
+          type: integer
+          example: 1
+        pageSize:
+          type: integer
+          example: 10
+        total:
+          type: integer
+          example: 57
+
+    User:
+      type: object
+      description: Người dùng trả về client (không bao giờ có PasswordHash)
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: hieuvn
+        fullName:
+          type: string
+          example: Vũ Ngọc Hiếu
+        email:
+          type: string
+          format: email
+          example: hieu@example.com
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: '2025-01-15T03:20:00.000Z'
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2025-01-16T08:00:00.000Z'
+
+    UserList:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/User'
+
+    CreateUserRequest:
+      type: object
+      required: [username, password, fullName, email, role]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9._]+$'
+          example: hieuvn
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          example: MatKhau123
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Vũ Ngọc Hiếu
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: hieu@example.com
+        role:
+          $ref: '#/components/schemas/Role'
+
+    UpdateUserRequest:
+      type: object
+      minProperties: 1
+      description: Cần ít nhất một trường để cập nhật
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Vũ Ngọc Hiếu
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: hieu@example.com
+
+    UpdateUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    UpdateUserStatusRequest:
+      type: object
+      required: [isActive]
+      properties:
+        isActive:
+          type: boolean
+          example: false
+
+    Subject:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        code:
+          type: string
+          example: PRJ301
+        name:
+          type: string
+          example: Java Web
+        description:
+          type: string
+          nullable: true
+          example: Môn học kỳ 5
+
+    SubjectList:
+      allOf:
+        - $ref: '#/components/schemas/Pagination'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/Subject'
+
+    CreateSubjectRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^[A-Z0-9_]+$'
+          example: PRJ301
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Java Web
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: Môn học kỳ 5
+
+    UpdateSubjectRequest:
+      type: object
+      minProperties: 1
+      description: Cần ít nhất một trường để cập nhật
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 20
+          pattern: '^[A-Z0-9_]+$'
+          example: PRJ301
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Java Web
+        description:
+          type: string
+          maxLength: 500
+          nullable: true
+
+    SubjectStatisticsItem:
+      type: object
+      description: |
+        Một bộ đề của môn kèm số liệu lượt làm. Tên cột giữ PascalCase vì
+        repository trả thẳng recordset của stored procedure.
+      properties:
+        SubjectId:
+          type: integer
+          example: 1
+        SubjectCode:
+          type: string
+          example: PRJ301
+        SubjectName:
+          type: string
+          example: Java Web
+        ExamSetId:
+          type: integer
+          nullable: true
+          description: null khi môn chưa có bộ đề nào
+          example: 12
+        ExamSetTitle:
+          type: string
+          nullable: true
+          example: Đề giữa kỳ PRJ301
+        ExamSetStatus:
+          type: string
+          nullable: true
+          enum: [Draft, Published]
+          example: Published
+        QuestionCount:
+          type: integer
+          example: 40
+        TotalAttempts:
+          type: integer
+          example: 120
+        SubmittedCount:
+          type: integer
+          example: 100
+        InProgressCount:
+          type: integer
+          example: 15
+        ExpiredCount:
+          type: integer
+          example: 5
+        AverageScore:
+          type: number
+          format: float
+          nullable: true
+          example: 7.25
+        HighestScore:
+          type: number
+          format: float
+          nullable: true
+          example: 10
+        LowestScore:
+          type: number
+          format: float
+          nullable: true
+          example: 3.5
+        SubmitRate:
+          type: number
+          format: float
+          nullable: true
+          description: Tỉ lệ lượt đã nộp trên tổng lượt làm, null khi chưa có lượt nộp
+          example: 0.8333
+
+    SubjectStatistics:
+      type: object
+      required: [subjectId, items]
+      properties:
+        subjectId:
+          type: integer
+          example: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubjectStatisticsItem'
+
+    ExamSetStatistics:
+      type: object
+      required: [examSetId]
+      properties:
+        examSetId:
+          type: integer
+          example: 12
+        totalAttempts:
+          type: integer
+          example: 120
+        submittedCount:
+          type: integer
+          example: 100
+        inProgressCount:
+          type: integer
+          example: 15
+        expiredCount:
+          type: integer
+          example: 5
+        averageScore:
+          type: number
+          format: float
+          nullable: true
+          example: 7.25
+        highestScore:
+          type: number
+          format: float
+          nullable: true
+          example: 10
+        lowestScore:
+          type: number
+          format: float
+          nullable: true
+          example: 3.5
+
+  responses:
+    BadRequest:
+      description: Dữ liệu không hợp lệ (VALIDATION_ERROR)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+    Unauthorized:
+      description: Thiếu hoặc sai token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: Thiếu hoặc sai token
+    Forbidden:
+      description: Không đủ quyền (403 FORBIDDEN)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: Bạn không có quyền thực hiện thao tác này
+    UserNotFound:
+      description: Không tìm thấy người dùng
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: USER_NOT_FOUND
+            message: Không tìm thấy người dùng
+    SubjectNotFound:
+      description: Không tìm thấy môn học
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: SUBJECT_NOT_FOUND
+            message: Không tìm thấy môn học
+    Internal:
+      description: Lỗi hệ thống (không lộ chi tiết)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INTERNAL
+            message: Lỗi hệ thống
+
