@@ -1,6 +1,6 @@
+--  OWNER: Yến
 /* =====================================================================
    01_create_tables.sql
-   OWNER: Yến
    Hệ thống Trắc nghiệm Ôn thi & Tự động Chấm điểm
    SQL Server 2022 Express
 

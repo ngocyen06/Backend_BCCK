@@ -1,7 +1,15 @@
 // OWNER: Yến
-const router = require('express').Router();
+// Đường dẫn xác thực. Register/login công khai; /me cần đăng nhập (CONTRACT.md:41,43).
 
-// TODO: khai báo route ở đây, theo CONTRACT.md mục 8
-// Nhớ: router.use(authenticate) ở đầu, mỗi route phải có authorize(...)
+const router = require('express').Router();
+const authController = require('../controllers/auth.controller');
+const { authenticate } = require('../middlewares/authenticate');
+const validate = require('../middlewares/validate');
+const { registerSchema, loginSchema } = require('../schemas/auth.schema');
+
+router.post('/register', validate(registerSchema), authController.register);
+router.post('/login', validate(loginSchema), authController.login);
+
+router.get('/me', authenticate, authController.me);
 
 module.exports = router;
