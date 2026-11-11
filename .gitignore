@@ -1,3 +1,25 @@
 # OWNER: Yến
-node_modules
+# ---------- Biến môi trường (chứa bí mật) ----------
 .env
+.env.local
+.env.*.local
+!.env.example
+
+# ---------- Dependencies ----------
+node_modules/
+
+# ---------- Logs ----------
+logs/
+*.log
+npm-debug.log*
+
+# ---------- Build & coverage ----------
+dist/
+build/
+coverage/
+
+# ---------- IDE / OS ----------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
