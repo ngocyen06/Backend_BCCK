@@ -10,7 +10,10 @@ const questionRepository = require('../repositories/question.repository');
 const ADMIN_ROLE = 'Admin';
 
 function assertCanModify(question, actor) {
-  if (!actor || actor.role === ADMIN_ROLE) return;
+  if (!actor) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Bạn cần đăng nhập để thực hiện thao tác này');
+  }
+  if (actor.role === ADMIN_ROLE) return;
   if (question.createdBy !== actor.id) {
     throw new AppError(403, 'FORBIDDEN', 'Bạn không có quyền sửa câu hỏi của người khác');
   }

@@ -129,19 +129,26 @@ async function findAll(filters, tx) {
   const pageSize = filters.pageSize || 10;
   const offset = (page - 1) * pageSize;
 
+  // Đếm riêng: COUNT(*) OVER() biến mất khi page vượt quá số trang (recordset rỗng).
+  const countRequest = await getRequest(tx);
+  const countWhere = buildWhere(countRequest, filters);
+  const countResult = await countRequest.query(
+    'SELECT COUNT(*) AS TotalCount FROM ExamSets e WHERE ' + countWhere
+  );
+  const total = countResult.recordset[0] ? countResult.recordset[0].TotalCount : 0;
+
   const request = await getRequest(tx);
   const where = buildWhere(request, filters);
   request.input('Offset', sql.Int, offset);
   request.input('PageSize', sql.Int, pageSize);
 
   const result = await request.query(
-    'SELECT ' + EXAM_SET_COLUMNS + ', COUNT(*) OVER() AS TotalCount ' +
+    'SELECT ' + EXAM_SET_COLUMNS + ' ' +
     'FROM ExamSets e WHERE ' + where + ' ' +
     'ORDER BY e.Id DESC ' +
     'OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY'
   );
 
-  const total = result.recordset.length > 0 ? result.recordset[0].TotalCount : 0;
   return {
     items: result.recordset.map(toExamSet),
     total: total,
@@ -210,7 +217,10 @@ async function updateStatus(id, status, tx) {
 async function countQuestions(examSetId, tx) {
   const request = await getRequest(tx);
   const result = await request.input('ExamSetId', sql.Int, examSetId).query(
-    'SELECT COUNT(*) AS Total FROM ExamSetQuestions WHERE ExamSetId = @ExamSetId'
+    'SELECT COUNT(*) AS Total ' +
+    'FROM ExamSetQuestions eq ' +
+    'INNER JOIN Questions q ON q.Id = eq.QuestionId ' +
+    'WHERE eq.ExamSetId = @ExamSetId AND q.IsDeleted = 0'
   );
 
   return result.recordset[0].Total;

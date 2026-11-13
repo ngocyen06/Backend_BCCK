@@ -120,19 +120,26 @@ async function findAll(filters, tx) {
   const pageSize = filters.pageSize || 10;
   const offset = (page - 1) * pageSize;
 
+  // Đếm riêng: COUNT(*) OVER() biến mất khi page vượt quá số trang (recordset rỗng).
+  const countRequest = await getRequest(tx);
+  const countWhere = buildWhere(countRequest, filters);
+  const countResult = await countRequest.query(
+    'SELECT COUNT(*) AS TotalCount FROM Questions q WHERE ' + countWhere
+  );
+  const total = countResult.recordset[0] ? countResult.recordset[0].TotalCount : 0;
+
   const request = await getRequest(tx);
   const where = buildWhere(request, filters);
   request.input('Offset', sql.Int, offset);
   request.input('PageSize', sql.Int, pageSize);
 
   const result = await request.query(
-    'SELECT ' + QUESTION_COLUMNS + ', COUNT(*) OVER() AS TotalCount ' +
+    'SELECT ' + QUESTION_COLUMNS + ' ' +
     'FROM Questions q WHERE ' + where + ' ' +
     'ORDER BY q.Id DESC ' +
     'OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY'
   );
 
-  const total = result.recordset.length > 0 ? result.recordset[0].TotalCount : 0;
   return {
     items: result.recordset.map(toQuestion),
     total: total,

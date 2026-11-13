@@ -10,10 +10,14 @@ const questionRepository = require('../repositories/question.repository');
 
 const ADMIN_ROLE = 'Admin';
 const STUDENT_ROLE = 'Student';
+const STATUS_DRAFT = 'Draft';
 const STATUS_PUBLISHED = 'Published';
 
 function assertCanModify(examSet, actor) {
-  if (!actor || actor.role === ADMIN_ROLE) return;
+  if (!actor) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Bạn cần đăng nhập để thực hiện thao tác này');
+  }
+  if (actor.role === ADMIN_ROLE) return;
   if (examSet.createdBy !== actor.id) {
     throw new AppError(403, 'FORBIDDEN', 'Bạn không có quyền sửa bộ đề của người khác');
   }
@@ -179,12 +183,17 @@ async function publish(id, actor) {
   }
   assertCanModify(existing, actor);
 
-  const totalQuestions = await examSetRepository.countQuestions(id, null);
-  if (totalQuestions === 0) {
-    throw new AppError(400, 'EXAM_SET_EMPTY', 'Bộ đề chưa có câu hỏi, không thể xuất bản');
+  // PATCH /:id/publish là công tắc: Published -> Draft (thu hồi), còn lại -> Published.
+  const nextStatus = existing.status === STATUS_PUBLISHED ? STATUS_DRAFT : STATUS_PUBLISHED;
+
+  if (nextStatus === STATUS_PUBLISHED) {
+    const totalQuestions = await examSetRepository.countQuestions(id, null);
+    if (totalQuestions === 0) {
+      throw new AppError(400, 'EXAM_SET_EMPTY', 'Bộ đề chưa có câu hỏi, không thể xuất bản');
+    }
   }
 
-  await examSetRepository.updateStatus(id, STATUS_PUBLISHED, null);
+  await examSetRepository.updateStatus(id, nextStatus, null);
 
   return examSetRepository.findByIdWithQuestions(id, null);
 }
