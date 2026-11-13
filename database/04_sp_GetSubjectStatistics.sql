@@ -20,28 +20,31 @@ BEGIN
     SET NOCOUNT ON;
 
     /* 50001: môn học không tồn tại (CONTRACT.md:51 — bảng mã lỗi SP) */
-    IF NOT EXISTS (SELECT 1 FROM dbo.Subjects WHERE Id = @SubjectId)
+    IF NOT EXISTS (SELECT 1 FROM dbo.Subject WHERE Id = @SubjectId)
     BEGIN
         THROW 50001, N'Không tìm thấy môn học', 1;
     END;
 
     ;WITH QuestionCount AS (
-        SELECT q.ExamSetId, COUNT(*) AS QuestionCount
-        FROM dbo.Questions AS q
+        SELECT
+            esq.ExamSetId,
+            COUNT(DISTINCT esq.QuestionId) AS QuestionCount
+        FROM dbo.ExamSetQuestion AS esq
+        INNER JOIN dbo.Question AS q ON q.Id = esq.QuestionId
         WHERE q.IsDeleted = 0
-        GROUP BY q.ExamSetId
+        GROUP BY esq.ExamSetId
     ),
     AttemptStats AS (
         SELECT
             a.ExamSetId,
             COUNT(*) AS TotalAttempts,
-            SUM(CASE WHEN a.Status = 'Submitted' THEN 1 ELSE 0 END) AS SubmittedCount,
-            SUM(CASE WHEN a.Status = 'InProgress' THEN 1 ELSE 0 END) AS InProgressCount,
-            SUM(CASE WHEN a.Status = 'Expired' THEN 1 ELSE 0 END) AS ExpiredCount,
-            AVG(CASE WHEN a.Status = 'Submitted' THEN CAST(a.Score AS FLOAT) END) AS AverageScore,
-            MAX(CASE WHEN a.Status = 'Submitted' THEN a.Score END) AS HighestScore,
-            MIN(CASE WHEN a.Status = 'Submitted' THEN a.Score END) AS LowestScore
-        FROM dbo.Attempts AS a
+            SUM(CASE WHEN a.Status = N'Submitted' THEN 1 ELSE 0 END) AS SubmittedCount,
+            SUM(CASE WHEN a.Status = N'InProgress' THEN 1 ELSE 0 END) AS InProgressCount,
+            SUM(CASE WHEN a.Status = N'Expired' THEN 1 ELSE 0 END) AS ExpiredCount,
+            AVG(CASE WHEN a.Status = N'Submitted' THEN CAST(a.TotalScore AS FLOAT) END) AS AverageScore,
+            MAX(CASE WHEN a.Status = N'Submitted' THEN a.TotalScore END) AS HighestScore,
+            MIN(CASE WHEN a.Status = N'Submitted' THEN a.TotalScore END) AS LowestScore
+        FROM dbo.ExamAttempt AS a
         GROUP BY a.ExamSetId
     )
     SELECT
@@ -63,8 +66,8 @@ BEGIN
             WHEN ISNULL(st.SubmittedCount, 0) = 0 THEN NULL
             ELSE CAST(CAST(ISNULL(st.SubmittedCount, 0) AS FLOAT) / st.TotalAttempts AS DECIMAL(5, 4))
         END                                             AS SubmitRate
-    FROM dbo.Subjects AS s
-    LEFT JOIN dbo.ExamSets AS es
+    FROM dbo.Subject AS s
+    LEFT JOIN dbo.ExamSet AS es
         ON es.SubjectId = s.Id
     LEFT JOIN QuestionCount AS qc
         ON qc.ExamSetId = es.Id
