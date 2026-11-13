@@ -3,7 +3,7 @@ const { withTimeout, DEFAULT_TIMEOUT_MS: FALLBACK_TIMEOUT_MS } = require('../uti
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 const TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || FALLBACK_TIMEOUT_MS;
 
 // Cache giải thích theo QuestionId (CONTRACT.md:62). Giữ trong RAM, đủ cho một instance.
