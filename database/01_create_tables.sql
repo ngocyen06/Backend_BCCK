@@ -15,13 +15,13 @@
 -- ---------------------------------------------------------------------
 -- 0. Tạo database (nếu chưa có)
 -- ---------------------------------------------------------------------
-IF DB_ID(N'QuizExamDb') IS NULL
+IF DB_ID(N'quiz_exam ') IS NULL
 BEGIN
-    CREATE DATABASE QuizExamDb COLLATE Vietnamese_100_CI_AS;
+    CREATE DATABASE quiz_exam  COLLATE Vietnamese_100_CI_AS;
 END
 GO
 
-USE QuizExamDb;
+USE quiz_exam ;
 GO
 
 -- ---------------------------------------------------------------------

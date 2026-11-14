@@ -3,15 +3,14 @@
 // Không SQL, không if nghiệp vụ; id lấy từ req.params, KHÔNG lấy từ body.
 
 const userService = require('../services/user.service');
+const AppError = require('../utils/AppError');
 
 function parseId(req) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
-    const error = new Error('Id không hợp lệ');
-    error.statusCode = 400;
-    error.code = 'VALIDATION_ERROR';
-    error.details = [{ path: 'params.id', message: 'Id phải là số nguyên dương' }];
-    throw error;
+    throw AppError.validation([
+      { path: ['params', 'id'], message: 'Id phải là số nguyên dương' },
+    ]);
   }
   return id;
 }

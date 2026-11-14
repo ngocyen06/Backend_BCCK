@@ -1,22 +1,20 @@
 // OWNER: Hiếu
-// Service quản lý user: quy tắc nghiệp vụ, ném lỗi có statusCode + code.
-// KHÔNG dùng req/res, KHÔNG viết SQL (CONTRACT.md:18).
-
-const bcrypt = require('bcryptjs');
+// Service quản lý user: quy tắc nghiệp vụ, ném AppError (CONTRACT.md:18).
+// KHÔNG dùng req/res, KHÔNG viết SQL.
 
 const userRepository = require('../repositories/user.repository');
-
-const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 10;
-
-function appError(statusCode, code, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-}
+const AppError = require('../utils/AppError');
+const { hashPassword } = require('../utils/password');
 
 function notFound() {
-  return appError(404, 'USER_NOT_FOUND', 'Không tìm thấy người dùng');
+  return new AppError(404, 'USER_NOT_FOUND', 'Không tìm thấy người dùng');
+}
+
+// Không bao giờ trả passwordHash ra ngoài.
+function toPublicUser(user) {
+  if (!user) return null;
+  const { passwordHash, ...rest } = user;
+  return rest;
 }
 
 async function ensureExists(id) {
@@ -30,42 +28,60 @@ async function ensureExists(id) {
  */
 async function listUsers(query) {
   const { items, total } = await userRepository.findAll(query);
-  return { items, page: query.page, pageSize: query.pageSize, total };
+  return {
+    items: items.map(toPublicUser),
+    page: query.page,
+    pageSize: query.pageSize,
+    total,
+  };
 }
 
 async function getUserById(id) {
-  return ensureExists(id);
+  return toPublicUser(await ensureExists(id));
 }
 
 async function createUser({ username, password, fullName, email, role }) {
   const existing = await userRepository.findByUsernameOrEmail(username, email);
   if (existing.some((row) => row.Username === username)) {
-    throw appError(409, 'USERNAME_EXISTS', 'Username đã tồn tại');
+    throw new AppError(409, 'USERNAME_EXISTS', 'Username đã tồn tại');
   }
   if (existing.some((row) => row.Email === email)) {
-    throw appError(409, 'EMAIL_EXISTS', 'Email đã tồn tại');
+    throw new AppError(409, 'EMAIL_EXISTS', 'Email đã tồn tại');
   }
 
-  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  return userRepository.create({ username, passwordHash, fullName, email, role });
+  const passwordHash = await hashPassword(password);
+  const created = await userRepository.createUser({
+    username,
+    passwordHash,
+    fullName,
+    email,
+    role,
+  });
+  return toPublicUser(created);
 }
 
 async function updateUser(id, data) {
   await ensureExists(id);
-  return userRepository.update(id, data);
+
+  const { password, ...rest } = data;
+  const patch = { ...rest };
+  if (password) patch.passwordHash = await hashPassword(password);
+
+  return toPublicUser(await userRepository.update(id, patch));
 }
 
 async function updateUserRole(id, role) {
   await ensureExists(id);
-  return userRepository.updateRole(id, role);
+  return toPublicUser(await userRepository.updateRole(id, role));
 }
 
 async function updateUserStatus(id, isActive) {
   await ensureExists(id);
-  return userRepository.updateStatus(id, isActive);
+  return toPublicUser(await userRepository.updateStatus(id, isActive));
 }
 
 async function deleteUser(id) {
+  await ensureExists(id);
   const removed = await userRepository.remove(id);
   if (!removed) throw notFound();
   return null;

@@ -1,15 +1,9 @@
 // OWNER: Hiếu
-// Service thống kê: quy tắc nghiệp vụ, ném lỗi có statusCode + code.
-// KHÔNG dùng req/res, KHÔNG viết SQL (CONTRACT.md:18).
+// Service thống kê: quy tắc nghiệp vụ, ném AppError (CONTRACT.md:18).
+// KHÔNG dùng req/res, KHÔNG viết SQL.
 
 const statisticsRepository = require('../repositories/statistics.repository');
-
-function appError(statusCode, code, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-}
+const AppError = require('../utils/AppError');
 
 /**
  * @param {number} subjectId
@@ -27,7 +21,7 @@ async function getSubjectStatistics(subjectId) {
 async function getExamSetStatistics(examSetId) {
   const data = await statisticsRepository.getExamSetStatistics(examSetId);
   if (!data) {
-    throw appError(404, 'EXAM_SET_NOT_FOUND', 'Không tìm thấy bộ đề');
+    throw new AppError(404, 'EXAM_SET_NOT_FOUND', 'Không tìm thấy bộ đề');
   }
   return { examSetId, ...data };
 }

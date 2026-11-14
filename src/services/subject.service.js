@@ -1,18 +1,12 @@
 // OWNER: Hiếu
-// Service quản lý môn học: quy tắc nghiệp vụ, ném lỗi có statusCode + code.
-// KHÔNG dùng req/res, KHÔNG viết SQL (CONTRACT.md:18).
+// Service quản lý môn học: quy tắc nghiệp vụ, ném AppError (CONTRACT.md:18).
+// KHÔNG dùng req/res, KHÔNG viết SQL.
 
 const subjectRepository = require('../repositories/subject.repository');
-
-function appError(statusCode, code, message) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  error.code = code;
-  return error;
-}
+const AppError = require('../utils/AppError');
 
 function notFound() {
-  return appError(404, 'SUBJECT_NOT_FOUND', 'Không tìm thấy môn học');
+  return new AppError(404, 'SUBJECT_NOT_FOUND', 'Không tìm thấy môn học');
 }
 
 async function ensureExists(id) {
@@ -24,10 +18,10 @@ async function ensureExists(id) {
 async function ensureUnique({ code, name, excludeId }) {
   const duplicates = await subjectRepository.findDuplicates({ code, name, excludeId });
   if (code && duplicates.some((row) => row.Code === code)) {
-    throw appError(409, 'SUBJECT_CODE_EXISTS', 'Mã môn đã tồn tại');
+    throw new AppError(409, 'SUBJECT_CODE_EXISTS', 'Mã môn đã tồn tại');
   }
   if (name && duplicates.some((row) => row.Name === name)) {
-    throw appError(409, 'SUBJECT_NAME_EXISTS', 'Tên môn đã tồn tại');
+    throw new AppError(409, 'SUBJECT_NAME_EXISTS', 'Tên môn đã tồn tại');
   }
 }
 
@@ -59,7 +53,7 @@ async function deleteSubject(id) {
 
   const { questionCount, examSetCount } = await subjectRepository.countUsages(id);
   if (questionCount > 0 || examSetCount > 0) {
-    throw appError(
+    throw new AppError(
       409,
       'SUBJECT_IN_USE',
       'Môn học đang được câu hỏi hoặc bộ đề sử dụng, không thể xoá',

@@ -21,7 +21,7 @@ const env = {
 
   DB_SERVER: optional('DB_SERVER', 'localhost'),
   DB_PORT: toInt(optional('DB_PORT', '1433'), 1433),
-  DB_NAME: optional('DB_NAME', 'QuizExamDb'),
+  DB_NAME: optional('DB_NAME', 'QuizExam'),
   DB_USER: optional('DB_USER', 'sa'),
   DB_PASSWORD: optional('DB_PASSWORD', ''),
   DB_ENCRYPT: optional('DB_ENCRYPT', 'false') === 'true',

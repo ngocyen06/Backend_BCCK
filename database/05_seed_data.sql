@@ -8,7 +8,7 @@
      student2  / Student@123   (Student)
 */
 
-USE QuizExamDb;
+USE quiz_exam ;
 GO
 
 SET NOCOUNT ON;

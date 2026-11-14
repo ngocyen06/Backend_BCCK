@@ -1,7 +1,7 @@
 /* OWNER: Yến */
 
 
-USE QuizExamDb;
+USE quiz_exam ;
 GO
 
 -- Index lọc (filtered index) yêu cầu các SET này khi INSERT/UPDATE.
